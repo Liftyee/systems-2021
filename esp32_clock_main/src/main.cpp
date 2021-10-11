@@ -15,6 +15,15 @@ working as they should.
 #include <SPI.h> 
 #include <Wire.h>
 #include <Arduino.h>
+#include <WiFi.h>
+#include "time.h"
+
+const char* ssid = "ThinkPad";
+const char* password = "6EYEBTA8";
+
+const char* ntpServer = "pool.ntp.org";
+const long gmtOffset_sec = 0;
+const int daylightOffset_sec = 3600;
 
 // SPI pins for the TFT display
 #define TFT_CS         16
@@ -94,6 +103,16 @@ void setup() {
  
   // Start the serial interface
   Serial.begin(9600);
+
+  Serial.printf("Connecting to %s ", ssid);
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.print(" Connected");
+  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+  
 }
 
 
