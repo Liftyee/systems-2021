@@ -112,7 +112,7 @@ void setup() {
   }
   Serial.print(" Connected");
   configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
-  
+  rtc.set
 }
 
 
