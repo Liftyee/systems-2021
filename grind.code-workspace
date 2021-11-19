@@ -1,0 +1,18 @@
+{
+	"folders": [
+		{
+			"path": "esp32_touch_test"
+		},
+		{
+			"path": "esp32_RTC_test"
+		},
+		{
+			"path": "esp32_clock_main"
+		},
+		{
+			"name": "esp32_IOT_test",
+			"path": "esp32_IOT_test"
+		}
+	],
+	"settings": {}
+}
