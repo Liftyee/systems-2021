@@ -8,9 +8,11 @@
 #include <Fonts/FreeSans9pt7b.h>
 
 // SPI pins for the TFT display
-#define TFT_CS         16
-#define TFT_RST        15
-#define TFT_DC         32
+#define TFT_CS         5
+#define TFT_RST        17
+#define TFT_DC         16
+#define TFT_BL         33
+#define TFT_BL_CH      2
 Adafruit_ST7789 tft = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST);
 
 #define WARM_PIN       22
@@ -108,8 +110,10 @@ void showMenu() {
 void setup() {
   ledcSetup(WARM_CH, PWM_FREQ, PWM_RES);
   ledcSetup(COOL_CH, PWM_FREQ, PWM_RES);
+  ledcSetup(TFT_BL_CH, PWM_FREQ, PWM_RES);
   ledcAttachPin(WARM_PIN, WARM_CH);
   ledcAttachPin(COOL_PIN, COOL_CH);
+  ledcAttachPin(TFT_BL, TFT_BL_CH);
 
   touchAttachInterrupt(T0, gotTouch0, TOUCH_SENS);
   //touchAttachInterrupt(T2, gotTouch2, TOUCH_SENS);
@@ -121,6 +125,7 @@ void setup() {
   tft.setTextSize(1);
   tft.setRotation(3);
   tft.setFont(&FreeSans9pt7b);
+  ledcWrite(TFT_BL_CH, map(analogRead(34), 0, 4095, 1, 256));
   //connect to WiFi
   Serial.printf("Connecting to %s ", ssid);
   tft.fillScreen(ST77XX_BLACK);
@@ -157,7 +162,7 @@ void loop() {
   }
   
 
-  
+  ledcWrite(TFT_BL_CH, map(analogRead(34), 0, 4095, 1, 256));
   ledcWrite(WARM_CH, lightState);
   if (getTouch(SEL_P)) {
     if (lightState == 256) {
@@ -185,4 +190,6 @@ void loop() {
   // }  
   memset(touchPins, 0, sizeof(touchPins));
   delay(100);
+
+  dacWrite(25, 128);
 }
