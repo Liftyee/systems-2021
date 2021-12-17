@@ -11,7 +11,7 @@
 #define TFT_CS         5
 #define TFT_RST        17
 #define TFT_DC         16
-#define TFT_BL         33
+#define TFT_BL         0
 #define TFT_BL_CH      2
 Adafruit_ST7789 tft = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST);
 
@@ -22,7 +22,7 @@ Adafruit_ST7789 tft = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST);
 #define PWM_RES        8
 #define PWM_FREQ       5000
 
-#define TOUCH_SENS     30
+#define TOUCH_SENS     50
 #define SEL_P          0
 #define NEXT_P         2
 #define TOUCH_WAIT     1000
@@ -72,6 +72,8 @@ void printLocalTime() {
   Serial.println(&timeinfo, "%A, %B %d %Y %H:%M:%S");
 }
 
+//void printTextFill()
+
 void showTimeOnScreen() {
   tft.fillScreen(ST77XX_BLACK);
   tft.setCursor(0, 12);
@@ -102,10 +104,23 @@ void showTimeOnScreen() {
 }
 
 
-
+bool inMenu = false;
 void showMenu() {
-
+  tft.fillScreen(ST77XX_BLACK);
+  tft.setCursor(0, 24);
+  tft.setTextSize(2);
+  tft.setFont(&FreeSans24pt7b);
+  tft.write("test menu");
+  tft.setTextSize(1);
 }
+#include "Arduino.h"
+#include "HardwareSerial.h"
+#include "DFRobotDFPlayerMini.h"
+
+HardwareSerial mySoftwareSerial(0); // RX, TX
+DFRobotDFPlayerMini myDFPlayer;
+void printDetail(uint8_t type, int value);
+
 
 void setup() {
   ledcSetup(WARM_CH, PWM_FREQ, PWM_RES);
@@ -150,17 +165,40 @@ void setup() {
   tft.fillScreen(ST77XX_BLACK);
   tft.setTextColor(ST77XX_WHITE);
   
+  mySoftwareSerial.begin(9600, SERIAL_8N1, 3, 1);
+
+  Serial.println();
+  Serial.println(F("DFRobot DFPlayer Mini Demo"));
+  Serial.println(F("Initializing DFPlayer ... (May take 3~5 seconds)"));
+
+  if (!myDFPlayer.begin(mySoftwareSerial)) {  //Use softwareSerial to communicate with mp3.
+    Serial.println(F("Unable to begin:"));
+    Serial.println(F("1.Please recheck the connection!"));
+    Serial.println(F("2.Please insert the SD card!"));
+    while(true);
+  }
+  Serial.println(F("DFPlayer Mini online."));
+
+  myDFPlayer.volume(10);  //Set volume value. From 0 to 30
+  myDFPlayer.play(1);  //Play the first mp3
 }
 unsigned long long lastTime;
 
 int lightState = 256;
 void loop() {
-  if (millis() >= lastTime + 1000) {
-    lastTime = millis();
-    printLocalTime();
-    showTimeOnScreen();
+  if (!inMenu) {
+    if (millis() >= lastTime + 1000) {
+      lastTime = millis();
+      printLocalTime();
+      showTimeOnScreen();
+    }
+    if (getTouch(SEL_P)) {
+      inMenu = true;
+      showMenu();
+    }
+  } else {
+    showMenu();
   }
-  
 
   ledcWrite(TFT_BL_CH, map(analogRead(34), 0, 4095, 1, 256));
   ledcWrite(WARM_CH, lightState);
@@ -191,5 +229,65 @@ void loop() {
   memset(touchPins, 0, sizeof(touchPins));
   delay(100);
 
-  dacWrite(25, 128);
+  //dacWrite(25, 128);
+  if (myDFPlayer.available()) {
+    printDetail(myDFPlayer.readType(), myDFPlayer.read()); //Print the detail message from DFPlayer to handle different errors and states.
+  }
+}
+
+
+
+void printDetail(uint8_t type, int value){
+  switch (type) {
+    case TimeOut:
+      Serial.println(F("Time Out!"));
+      break;
+    case WrongStack:
+      Serial.println(F("Stack Wrong!"));
+      break;
+    case DFPlayerCardInserted:
+      Serial.println(F("Card Inserted!"));
+      break;
+    case DFPlayerCardRemoved:
+      Serial.println(F("Card Removed!"));
+      break;
+    case DFPlayerCardOnline:
+      Serial.println(F("Card Online!"));
+      break;
+    case DFPlayerPlayFinished:
+      Serial.print(F("Number:"));
+      Serial.print(value);
+      Serial.println(F(" Play Finished!"));
+      break;
+    case DFPlayerError:
+      Serial.print(F("DFPlayerError:"));
+      switch (value) {
+        case Busy:
+          Serial.println(F("Card not found"));
+          break;
+        case Sleeping:
+          Serial.println(F("Sleeping"));
+          break;
+        case SerialWrongStack:
+          Serial.println(F("Get Wrong Stack"));
+          break;
+        case CheckSumNotMatch:
+          Serial.println(F("Check Sum Not Match"));
+          break;
+        case FileIndexOut:
+          Serial.println(F("File Index Out of Bound"));
+          break;
+        case FileMismatch:
+          Serial.println(F("Cannot Find File"));
+          break;
+        case Advertise:
+          Serial.println(F("In Advertise"));
+          break;
+        default:
+          break;
+      }
+      break;
+    default:
+      break;
+  }
 }
