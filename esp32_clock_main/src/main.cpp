@@ -11,7 +11,7 @@
 
 // SPI pins for the TFT display
 #define TFT_CS         5
-#define TFT_RST        4
+#define TFT_RST        -1
 #define TFT_DC         0
 #define TFT_BL         15
 #define TFT_BL_CH      2
@@ -87,33 +87,36 @@ void printLocalTime() {
   Serial.println(&timeinfo, "%A, %B %d %Y %H:%M:%S");
 }
 
+GFXcanvas1 screen(320, 240);
+GFXcanvas1 oldscreen(320, 240);
+
 void tftPrint(String s, int16_t x, int16_t y, uint32_t color = ST77XX_BLACK) {
   int16_t  x1, y1;
   uint16_t w, h;
-  tft.getTextBounds(s, x, y, &x1, &y1, &w, &h);
-  tft.fillRect(x1, y1, w, h, color);
-  tft.setCursor(x, y);
-  tft.print(s);
+  screen.getTextBounds(s, x, y, &x1, &y1, &w, &h);
+  screen.fillRect(x1, y1, w, h, color);
+  screen.setCursor(x, y);
+  screen.print(s);
 }
 
 void tftPrintln(String s, uint32_t color = ST77XX_BLACK) {
   int16_t  x1, y1;
   uint16_t w, h;
-  tft.getTextBounds(s, tft.getCursorX(), tft.getCursorY(), &x1, &y1, &w, &h);
-  tft.fillRect(x1, y1, w, h, color);
-  tft.println(s);
+  screen.getTextBounds(s, tft.getCursorX(), tft.getCursorY(), &x1, &y1, &w, &h);
+  screen.fillRect(x1, y1, w, h, color);
+  screen.println(s);
 }
 
 void showTimeOnScreen() {
-  tft.setCursor(0, 12);
-  tft.setTextSize(1);
-  tft.setTextWrap(true);
-  tft.setFont(&FreeSans9pt7b);
+  screen.setCursor(0, 12);
+  screen.setTextSize(1);
+  screen.setTextWrap(true);
+  screen.setFont(&FreeSans9pt7b);
   
   
   struct tm timeinfo;
   if(!getLocalTime(&timeinfo)){
-    tft.print("Failed to obtain time");
+    screen.print("Failed to obtain time");
     return;
   } 
   char longdate[32];
@@ -123,29 +126,51 @@ void showTimeOnScreen() {
   strftime(timedate, sizeof(timedate), "%H:%M:%S %d/%m/%Y", &timeinfo);
   strftime(shortime, sizeof(shortime), "%H:%M", &timeinfo);
   
-  tftPrintln(longdate);
-  tftPrintln(timedate);
+  //tftPrintln(longdate);
+  //tftPrintln(timedate);
 
-  tft.setCursor(280, 12);
+  screen.println(longdate);
+  screen.println(timedate);
+
+  screen.setCursor(280, 12);
   //tft.print(bme.readTemperature());
-  tft.print("20°C");
+  screen.print("20°C");
 
-  tft.setFont(&FreeSans24pt7b);
-  tft.setTextSize(2);
-  tftPrint(shortime, 0, 200);
-
+  screen.setFont(&FreeSans24pt7b);
+  screen.setTextSize(2);
+  //tftPrint(shortime, 0, 200);
+  screen.setCursor(0, 160);
+  screen.print(shortime);
   
 }
 
 
 bool inMenu = false;
 void showMenu() {
-  tft.fillScreen(ST77XX_BLACK);
-  tft.setCursor(0, 24);
-  tft.setTextSize(2);
-  tft.setFont(&FreeSans24pt7b);
-  tft.write("test menu");
-  tft.setTextSize(1);
+  //tft.fillScreen(ST77XX_BLACK);
+  screen.setCursor(0, 24);
+  screen.setTextSize(2);
+  screen.setFont(&FreeSans24pt7b);
+  screen.write("test menu");
+  screen.setTextSize(1);
+}
+
+void updateTFT(GFXcanvas1* oldS, GFXcanvas1* newS, uint16_t color, uint16_t bg) { 
+  Serial.print("Updating TFT");
+  for (int x = 0; x < 320; x++) {
+    for (int y = 0; y < 240; y++) {
+      if (oldS->getPixel(x, y) != newS->getPixel(x, y)) {
+        //Serial.print("Diff pixel!");
+        if (newS->getPixel(x, y) == 0x1) {
+          tft.drawPixel(x, y, color);
+        } else {
+          Serial.print("blacc");
+          tft.drawPixel(x, y, ST77XX_BLACK);
+        }
+      }
+    }
+  }
+  
 }
 
 void setup() {
@@ -172,12 +197,18 @@ void setup() {
   Serial.printf("Connecting to %s ", ssid);
   tft.fillScreen(ST77XX_BLACK);
   tft.setCursor(0,12);
+
+  memset(touchPins, 0, sizeof(touchPins));
+
   tft.print("Connecting to WiFi");
   WiFi.begin(ssid, password);
   while (WiFi.status() != WL_CONNECTED) {
       delay(500);
       Serial.print(".");
       tft.print(".");
+      if (getTouch(SEL_P)) {
+        break;
+      }
   }
   Serial.println(" CONNECTED");
   tft.print(" CONNECTED");
@@ -206,7 +237,7 @@ void setup() {
   //     Serial.print("        ID of 0x61 represents a BME 680.\n");
   //     while (1) delay(10);
   // }
-
+  //tft.drawBitmap(0, 0, screen.getBuffer(), 320, 240, ST77XX_WHITE, ST77XX_BLACK);
   tft.fillScreen(ST77XX_BLACK);
   
   DFSerial.begin(9600);
@@ -226,12 +257,19 @@ void setup() {
 
   MP3.volume(30);  //Set volume value. From 0 to 30
   MP3.play(3);  //Play the first mp3
+  tft.fillScreen(ST77XX_BLACK);
+
+  updateTFT(&oldscreen, &screen, ST77XX_WHITE, ST77XX_BLACK);
+  delay(100);
+  tft.fillScreen(ST77XX_BLACK);
+
 }
 unsigned long long lastTime;
 
 int lightState = 256;
 void loop() {
-  Serial.print(touchRead(2));
+  
+  tft.setCursor(0, 0);
   if (!inMenu) {
     if (millis() >= lastTime + 1000) {
       lastTime = millis();
@@ -250,6 +288,20 @@ void loop() {
       Serial.println("SEL button pressed!");
       inMenu = false;
       tft.fillScreen(ST77XX_BLACK);
+    }
+  }
+
+  // DO ALL DISPLAY OPERATIONS BEFORE THIS POINT
+  //tft.drawBitmap(0, 0, screen.getBuffer(), 320, 240, ST77XX_WHITE, ST77XX_BLACK);
+  updateTFT(&oldscreen, &screen, ST77XX_WHITE, ST77XX_BLACK);
+  
+  //THIS DOENS@T WORK
+  //oldscreen = screen;
+
+  // THIS IS HIDEOUSLY INEFFICIENT
+  for (int x = 0; x < 320; x++) {
+    for (int y = 0; y < 240; y++) {
+      oldscreen.drawPixel(x, y, screen.getPixel(x, y));
     }
   }
 
@@ -272,7 +324,7 @@ void loop() {
   //   delay(10);
   // }
   // for (int i = 255; i >= 0; i--) {
-  //   ledcWrite(WARM_CH, i);
+  //   ledhhcWrite(WARM_CH, i);
   //   delay(10);
   // }
   // for (int i = 255; i > 0; i--) {
