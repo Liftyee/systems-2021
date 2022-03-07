@@ -2,11 +2,12 @@
 #include "time.h"
 #include <Adafruit_GFX.h>    // Core graphics library
 #include <Adafruit_ST7789.h> // Hardware-specific library for ST7789
-#include <Adafruit_Sensor.h>
-#include <Adafruit_BME280.h>
+//#include <Adafruit_Sensor.h>
+//#include <Adafruit_BME280.h>
 #include <Wire.h>
 #include <Arduino.h>
 #include <Fonts/FreeSans24pt7b.h>
+#include <Fonts/FreeSans12pt7b.h>
 #include <Fonts/FreeSans9pt7b.h>
 
 // SPI pins for the TFT display
@@ -15,6 +16,8 @@
 #define TFT_DC         0
 #define TFT_BL         15
 #define TFT_BL_CH      2
+#define BASE_FONT_HEIGHT 12
+#define SEL_BORDER_WIDTH 2
 Adafruit_ST7789 tft = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST);
 
 #define LIGHT_SENS     34
@@ -26,8 +29,10 @@ Adafruit_ST7789 tft = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST);
 #define PWM_FREQ       5000
 
 #define TOUCH_SENS     30
-#define SEL_P          3
-#define NEXT_P         4
+#define SEL_P          2
+#define BACK_P         5
+#define UP_P           6
+#define DOWN_P         7
 #define TOUCH_WAIT     1000
 
 // BME280 setup
@@ -52,7 +57,7 @@ void printDetail(uint8_t type, int value);
 
 bool touchPins[20];
 unsigned long long lastTouch[10];
-
+#ifndef settouchpins
 void gotTouch0(){
   touchPins[0] = true;
 }
@@ -68,6 +73,19 @@ void gotTouch3(){
 void gotTouch4(){
   touchPins[4] = true;
 }
+
+void gotTouch5(){
+  touchPins[5] = true;
+}
+
+void gotTouch6(){
+  touchPins[6] = true;
+}
+
+void gotTouch7(){
+  touchPins[7] = true;
+}
+#endif
 
 bool getTouch(int pin){
   if (touchPins[pin] && (millis() > (lastTouch[pin]+TOUCH_WAIT))){
@@ -87,11 +105,16 @@ void printLocalTime() {
   Serial.println(&timeinfo, "%A, %B %d %Y %H:%M:%S");
 }
 
-void tftPrint(String s, int16_t x, int16_t y, uint32_t color = ST77XX_BLACK) {
+void tftPrint(String s, int16_t x, int16_t y, uint32_t bgcolor = ST77XX_BLACK, uint32_t txtcolor = ST77XX_WHITE, uint8_t border = 0) {
   int16_t  x1, y1;
   uint16_t w, h;
   tft.getTextBounds(s, x, y, &x1, &y1, &w, &h);
-  tft.fillRect(x1, y1, w, h, color);
+  if (border == 0) {
+    tft.fillRect(x1, y1, w, h, bgcolor);
+  } else {
+    tft.fillRect(x1-border, y1-border, tft.width(), h+(2*border), bgcolor);
+  }
+  tft.setTextColor(txtcolor);
   tft.setCursor(x, y);
   tft.print(s);
 }
@@ -104,8 +127,16 @@ void tftPrintln(String s, uint32_t color = ST77XX_BLACK) {
   tft.println(s);
 }
 
+void tftPrintNP(String s, uint32_t color = ST77XX_BLACK) {
+  int16_t  x1, y1;
+  uint16_t w, h;
+  tft.getTextBounds(s, tft.getCursorX(), tft.getCursorY(), &x1, &y1, &w, &h);
+  tft.fillRect(x1, y1, w, h, color);
+  tft.println(s);
+}
+
 void showTimeOnScreen() {
-  tft.setCursor(0, 12);
+  tft.setCursor(0, BASE_FONT_HEIGHT);
   tft.setTextSize(1);
   tft.setTextWrap(true);
   tft.setFont(&FreeSans9pt7b);
@@ -126,7 +157,7 @@ void showTimeOnScreen() {
   tftPrintln(longdate);
   tftPrintln(timedate);
 
-  tft.setCursor(280, 12);
+  tft.setCursor(280, BASE_FONT_HEIGHT);
   //tft.print(bme.readTemperature());
   tft.print("20°C");
 
@@ -137,15 +168,101 @@ void showTimeOnScreen() {
   
 }
 
+#define NUM_ALARMS 2
+struct tm alarms[NUM_ALARMS];
+bool alarmenabled[NUM_ALARMS];
+uint8_t tmpHour = 0;
+uint8_t tmpMinute = 0;
 
+
+String fix2digits(uint8_t n) {
+  String res = String(n);
+  if (res.length() <= 2) {
+    res = "0" + res;
+  }
+  return res;
+}
+
+void printAlarmSetTime() {
+  tft.setCursor(0,BASE_FONT_HEIGHT);
+  tftPrintNP("Set alarm time: ");
+  tftPrintNP(fix2digits(tmpHour));
+  tftPrintNP(fix2digits(tmpMinute));
+}
+
+void setAlarm() {
+  while (!getTouch(SEL_P)) {
+    printAlarmSetTime();
+  }
+}
+
+void listAlarm() {
+
+}
+
+int16_t getlineY(uint8_t bwidth, uint16_t fheight, uint8_t line) {
+  int16_t res;
+  res = fheight*(line+1) + bwidth*line + (bwidth+1)*(line+1);
+  return res;
+}
+
+#define NUM_SELS 4
 bool inMenu = false;
+int curSelection = 0;
+typedef void (*func) (void);
+
+const char *selections[] = {"Set alarm", "Alarm list", "Selection 3", "Selection 4"};
+func mainFuncList[NUM_SELS] = {setAlarm, listAlarm};
+
+
+#define MENU_FONT_HEIGHT 17
+uint8_t menuPos = -1;
+//uint8_t cursoridx = 0;
+uint8_t oldidx = 0;
 void showMenu() {
-  tft.fillScreen(ST77XX_BLACK);
-  tft.setCursor(0, 24);
-  tft.setTextSize(2);
-  tft.setFont(&FreeSans24pt7b);
-  tft.write("test menu");
+  tft.setCursor(SEL_BORDER_WIDTH, SEL_BORDER_WIDTH+MENU_FONT_HEIGHT);
   tft.setTextSize(1);
+  
+  if (getTouch(UP_P)) {
+    Serial.println("Up pressed!");
+    menuPos -= 1; 
+  }
+  if (getTouch(DOWN_P)) {
+    Serial.println("Down pressed!");
+    menuPos += 1;
+  }
+  if (menuPos > NUM_SELS -1) {
+    menuPos = NUM_SELS - 1;
+  }
+  if (menuPos < 0) {
+    menuPos = 0;
+  }
+
+  if (menuPos != oldidx) {
+    Serial.println(menuPos);
+    for (int i = 0; i < NUM_SELS; i++) {
+      if (i == menuPos) {
+        // draw selected text
+        tftPrint(selections[i], SEL_BORDER_WIDTH, getlineY(SEL_BORDER_WIDTH, MENU_FONT_HEIGHT, i), ST77XX_WHITE, ST77XX_BLACK, SEL_BORDER_WIDTH);
+        // int16_t fx, fy; // fill x, fill y
+        // uint16_t fw, fh; // fill width, fill height
+        // tft.getTextBounds(selections[i], tft.getCursorX(), tft.getCursorY(), &fx, &fy, &fw, &fh);
+        // tft.fillRect(fx-SEL_BORDER_WIDTH, fy-SEL_BORDER_WIDTH, tft.width(), fh+(2*SEL_BORDER_WIDTH), ST77XX_WHITE);
+        // tft.setTextColor(ST77XX_BLACK);
+        // tft.println(selections[i]);
+        // tft.setTextColor(ST77XX_WHITE);
+      } else {
+        // draw normal text
+        tftPrint(selections[i], SEL_BORDER_WIDTH, getlineY(SEL_BORDER_WIDTH, MENU_FONT_HEIGHT, i), ST77XX_BLACK, ST77XX_WHITE, SEL_BORDER_WIDTH);
+      }
+    }
+
+    if (getTouch(SEL_P)) {
+      mainFuncList[menuPos]();
+    }
+  }
+
+  oldidx = menuPos;
 }
 
 void setup() {
@@ -156,10 +273,11 @@ void setup() {
   ledcAttachPin(COOL_PIN, COOL_CH);
   ledcAttachPin(TFT_BL, TFT_BL_CH);
 
-  //touchAttachInterrupt(T0, gotTouch0, TOUCH_SENS);
-  //touchAttachInterrupt(T2, gotTouch2, TOUCH_SENS);
-  touchAttachInterrupt(T2, gotTouch3, TOUCH_SENS);
+  touchAttachInterrupt(T2, gotTouch2, TOUCH_SENS);
   touchAttachInterrupt(T4, gotTouch4, TOUCH_SENS);
+  touchAttachInterrupt(T5, gotTouch5, TOUCH_SENS);
+  touchAttachInterrupt(T6, gotTouch6, TOUCH_SENS);
+  touchAttachInterrupt(T7, gotTouch7, TOUCH_SENS);
 
   Serial.begin(115200);
   tft.init(240, 320);
@@ -171,7 +289,7 @@ void setup() {
   //connect to WiFi
   Serial.printf("Connecting to %s ", ssid);
   tft.fillScreen(ST77XX_BLACK);
-  tft.setCursor(0,12);
+  tft.setCursor(0,BASE_FONT_HEIGHT);
   tft.print("Connecting to WiFi");
   WiFi.begin(ssid, password);
   while (WiFi.status() != WL_CONNECTED) {
@@ -214,41 +332,43 @@ void setup() {
   Serial.println();
   Serial.println(F("DFRobot DFPlayer Mini Demo"));
   Serial.println(F("Initializing DFPlayer ... (May take 3~5 seconds)"));
-
+  
   if (!MP3.begin(DFSerial)) {  //Use softwareSerial to communicate with mp3.
+    tft.setCursor(0,BASE_FONT_HEIGHT);
     tft.print("DFPlayer not connected!");
     Serial.println(F("Unable to begin:"));
     Serial.println(F("1.Please recheck the connection!"));
     Serial.println(F("2.Please insert the SD card!"));
-    //while(true);
+    while(!Serial);
   }
   Serial.println(F("DFPlayer Mini online."));
 
-  MP3.volume(30);  //Set volume value. From 0 to 30
-  MP3.play(3);  //Play the first mp3
+  MP3.volume(5);  //Set volume value. From 0 to 30
+  MP3.play(2);  //Play the first mp3
 }
 unsigned long long lastTime;
 
 int lightState = 256;
 void loop() {
-  Serial.print(touchRead(2));
   if (!inMenu) {
     if (millis() >= lastTime + 1000) {
       lastTime = millis();
-      printLocalTime();
       showTimeOnScreen();
     }
     if (getTouch(SEL_P)) {
       Serial.println("SEL button pressed!");
+      tft.setFont(&FreeSans12pt7b);
       inMenu = true;
+      oldidx = -1;
       tft.fillScreen(ST77XX_BLACK);
       showMenu();
     }
   } else {
     showMenu();
-    if (getTouch(SEL_P)) {
-      Serial.println("SEL button pressed!");
+    if (getTouch(BACK_P)) {
+      Serial.println("Back button pressed!");
       inMenu = false;
+      tft.setFont(&FreeSans9pt7b);
       tft.fillScreen(ST77XX_BLACK);
     }
   }
@@ -282,7 +402,6 @@ void loop() {
   memset(touchPins, 0, sizeof(touchPins));
   delay(100);
 
-  //dacWrite(25, 128);
   if (MP3.available()) {
     printDetail(MP3.readType(), MP3.read()); //Print the detail message from DFPlayer to handle different errors and states.
   }
