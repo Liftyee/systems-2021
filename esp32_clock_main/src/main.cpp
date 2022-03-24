@@ -63,7 +63,8 @@ void tftPrint(String s, int16_t x, int16_t y, uint32_t bgcolor = ST77XX_BLACK, u
   uint16_t w, h;
   tft.getTextBounds(s, x, y, &x1, &y1, &w, &h);
   if (border == 0) {
-    tft.fillRect(x1, y1, w, h, bgcolor);
+    //tft.fillRect(x1, y1, w, h, bgcolor);
+    tft.fillRect(x1-1, y1-1, w+(2*1), h+(2*1), bgcolor);
   } else {
     if (fullscreen) {
       tft.fillRect(x1-border, y1-border, tft.width(), h+(2*border), bgcolor);
@@ -82,13 +83,13 @@ void tftPrintln(String s, uint32_t color = ST77XX_BLACK) { // tft print newline
   tft.fillRect(x1, y1, w, h, color);
   tft.println(s);
 }
-void tftPrintNP(String s, uint32_t color = ST77XX_BLACK) { // tft print no position.
-  int16_t  x1, y1;
-  uint16_t w, h;
-  tft.getTextBounds(s, tft.getCursorX(), tft.getCursorY(), &x1, &y1, &w, &h);
-  tft.fillRect(x1, y1, w, h, color);
-  tft.println(s);
-}
+// void tftPrintNP(String s, uint32_t color = ST77XX_BLACK) { // tft print no position.
+//   int16_t  x1, y1;
+//   uint16_t w, h;
+//   tft.getTextBounds(s, tft.getCursorX(), tft.getCursorY(), &x1, &y1, &w, &h);
+//   tft.fillRect(x1, y1, w, h, color);
+//   tft.println(s);
+// }
 
 // function to show time on screen
 void showTimeOnScreen() {
@@ -149,6 +150,10 @@ struct alarmData {
 uint8_t changeidx = 0;
 alarmData alarm1 = {false, 0, 0};
 
+// #define NUM_ALARMS 2
+// struct alarmData alarms[NUM_ALARMS];
+// bool alarmenabled[NUM_ALARMS];
+
 void constrainAlarmTime(alarmData &alm) {
   if (alm.hour > 24) {
     alm.hour = 0;
@@ -170,12 +175,13 @@ void setAlarm() {
 
   // initialize text stuff
   tft.setTextSize(1); 
-  tft.setFont(&FreeSans9pt7b);
+  tft.setFont(&FreeSans12pt7b);
   
   // print prompt message
-  tft.setCursor(0,BASE_FONT_HEIGHT);
+  tft.setCursor(0,20);
   tft.print("Set alarm time: ");
   
+  // set font for large letters
   tft.setFont(&FreeSans24pt7b);
   tft.setTextSize(2);
 
@@ -192,31 +198,33 @@ void setAlarm() {
   } else {
     tftPrint(fix2digits(alarm1.hour), 20, 100, ST77XX_BLACK, ST77XX_WHITE, SEL_BORDER_WIDTH);
   }
+
   tftPrint(":", tft.getCursorX(), 100, ST77XX_BLACK, ST77XX_WHITE, SEL_BORDER_WIDTH);
+
   if (changeidx == 1) {
     tftPrint(fix2digits(alarm1.min), tft.getCursorX(), 100, ST77XX_WHITE, ST77XX_BLACK, SEL_BORDER_WIDTH, false);
     if (getTouch(UP_P)) {
-      Serial.println("Up pressed!");
+      //Serial.println("Up pressed!");
       alarm1.min++;
     }
     if (getTouch(DOWN_P)) {
-      Serial.println("Down pressed!");
+      //Serial.println("Down pressed!");
       alarm1.min--;
     }
   } else {
     tftPrint(fix2digits(alarm1.min), tft.getCursorX(), 100, ST77XX_BLACK, ST77XX_WHITE, SEL_BORDER_WIDTH);
   }
 
+  // reset font
   tft.setTextSize(1); 
   tft.setFont(&FreeSans9pt7b);
 
   if (getTouch(SEL_P)) {
-    Serial.print("increasing change idx");
-    touchPins[SEL_P] = false;
+    //Serial.print("increasing change idx");
     changeidx++;
   }
   if (getTouch(BACK_P)) {
-    Serial.print("decreasing change idx");
+    //Serial.print("decreasing change idx");
     changeidx--;
   }
   if (changeidx > 1) {
@@ -232,7 +240,7 @@ void setAlarm() {
 }
 
 void saveAlarm() {
-  tft.setTextSize(2); 
+  tft.setTextSize(1); 
   tft.setFont(&FreeSans9pt7b);
   
   // print prompt message
@@ -244,7 +252,95 @@ void saveAlarm() {
 }
 
 void listAlarm() {
+  tft.setTextSize(1); 
+  tft.setFont(&FreeSans12pt7b);
+  tftPrint("Alarm time:", 0, 20);
+  tftPrint(fix2digits(alarm1.hour) + ":" + fix2digits(alarm1.min), tft.getCursorX(), 20);
+}
 
+uint8_t volume = 0;
+void setVolume() {
+
+  // initialize text stuff
+  tft.setTextSize(1); 
+  tft.setFont(&FreeSans12pt7b);
+  
+  // print prompt message
+  tft.setCursor(0,20);
+  tft.print("Set volume: ");
+  
+  // set font for large letters
+  tft.setFont(&FreeSans24pt7b);
+  tft.setTextSize(2);
+
+  tftPrint(fix2digits(volume), 20, 100);
+
+  // reset font
+  tft.setTextSize(1); 
+  tft.setFont(&FreeSans9pt7b);
+  if (getTouch(UP_P)) {
+    volume++;
+  }
+  if (getTouch(DOWN_P)) {
+    volume--;
+  }
+  if (getTouch(SEL_P)) {
+    MP3.volume(volume*3);
+    touchPins[BACK_P] = true;
+  }
+
+  if (volume > 10) {
+    volume = 10;
+  }
+  if (volume < 0) {
+    volume = 0;
+  }
+  //Serial.print(changeidx);
+  
+}
+
+void toggleAlarm() {
+
+  // initialize text stuff
+  tft.setTextSize(1); 
+  tft.setFont(&FreeSans12pt7b);
+  
+  // print prompt message
+  tft.setCursor(0,20);
+  tft.print("Alarm is: ");
+  
+  // set font for large letters
+  tft.setFont(&FreeSans24pt7b);
+  tft.setTextSize(2);
+  if (alarm1.enabled) {
+    tftPrint("On", 20, 100);
+  } else {
+    tftPrint("Off", 20, 100);
+  }
+
+  // reset font
+  tft.setTextSize(1); 
+  tft.setFont(&FreeSans9pt7b);
+  if (getTouch(UP_P) || getTouch(DOWN_P)) {
+    alarm1.enabled = !alarm1.enabled;
+  }
+  if (getTouch(SEL_P)) {
+    touchPins[BACK_P] = true;
+  }
+  //Serial.print(changeidx);
+  
+}
+
+void testAudio() {
+  tft.setTextSize(1); 
+  tft.setFont(&FreeSans12pt7b);
+  tft.setCursor(0,20);
+  tft.print("Testing audio, press X to exit ");
+  MP3.play(2);
+  if (getTouch(BACK_P)) {
+    MP3.pause();
+    touchPins[BACK_P] = true;
+  }
 }
 
 int16_t getlineY(uint8_t bwidth, uint16_t fheight, uint8_t line) {
@@ -253,14 +349,14 @@ int16_t getlineY(uint8_t bwidth, uint16_t fheight, uint8_t line) {
   return res;
 }
 
-#define NUM_SELS 4
+#define NUM_SELS 5
 bool inMenu = false;
 int curSelection = 0;
 typedef void (*func) (void);
 
-const char *selections[] = {"Set alarm", "Alarm list", "Selection 3", "Selection 4"};
-func mainFuncList[NUM_SELS] = {setAlarm, listAlarm};
-func exitFuncList[NUM_SELS] = {saveAlarm};
+const char *selections[] = {"Set alarm", "Alarm list", "Set alarm volume", "Alarm on/off", "Speaker test"};
+func mainFuncList[NUM_SELS] = {setAlarm, listAlarm, setVolume, toggleAlarm, testAudio};
+//func exitFuncList[NUM_SELS] = {saveAlarm};
 
 #define MENU_FONT_HEIGHT 17
 uint8_t menuPos = -1;
@@ -387,7 +483,7 @@ void setup() {
   Serial.println(F("DFPlayer Mini online."));
 
   MP3.volume(5);  //Set volume value. From 0 to 30
-  MP3.play(2);  //Play the first mp3
+  //Play the first mp3
 
   getTouch(SEL_P);
   tft.fillScreen(ST77XX_BLACK);
@@ -402,7 +498,7 @@ void loop() {
       showTimeOnScreen();
     }
     if (getTouch(SEL_P)) {
-      Serial.println("SEL button pressed!");
+      //Serial.println("SEL button pressed!");
       tft.setFont(&FreeSans12pt7b);
       inMenu = true;
       oldidx = -1;
@@ -412,7 +508,7 @@ void loop() {
   } else if (inMenu){
     showMenu();
     if (getTouch(BACK_P)) {
-      Serial.println("Back button pressed!");
+      //Serial.println("Back button pressed!");
       inMenu = false;
       tft.setFont(&FreeSans9pt7b);
       tft.fillScreen(ST77XX_BLACK);
@@ -420,9 +516,9 @@ void loop() {
   } else {
     mainFuncList[progidx]();
     if (getTouch(BACK_P)) {
-      Serial.println("Back button pressed!");
+      //Serial.println("Back button pressed!");
       inProgram = false;
-      exitFuncList[progidx]();
+      //exitFuncList[progidx]();
       tft.setFont(&FreeSans9pt7b);
       tft.fillScreen(ST77XX_BLACK);
     }
