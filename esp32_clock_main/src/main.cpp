@@ -1,63 +1,13 @@
-#include <WiFi.h>
-#include "time.h"
-#include <Adafruit_GFX.h>    // Core graphics library
-#include <Adafruit_ST7789.h> // Hardware-specific library for ST7789
-//#include <Adafruit_Sensor.h>
-//#include <Adafruit_BME280.h>
-#include <Wire.h>
 #include <Arduino.h>
-#include <Fonts/FreeSans24pt7b.h>
-#include <Fonts/FreeSans12pt7b.h>
-#include <Fonts/FreeSans9pt7b.h>
+#include <config.h>
 
-// SPI pins for the TFT display
-#define TFT_CS         5
-#define TFT_RST        4
-#define TFT_DC         0
-#define TFT_BL         15
-#define TFT_BL_CH      2
-#define BASE_FONT_HEIGHT 12
-#define SEL_BORDER_WIDTH 2
-Adafruit_ST7789 tft = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST);
-
-#define LIGHT_SENS     34
-#define WARM_PIN       33
-#define COOL_PIN       32
-#define WARM_CH        0
-#define COOL_CH        1
-#define PWM_RES        8
-#define PWM_FREQ       5000
-
-#define TOUCH_SENS     30
-#define SEL_P          2
-#define BACK_P         5
-#define UP_P           6
-#define DOWN_P         7
-#define TOUCH_WAIT     1000
-
-// BME280 setup
-#define SEALEVELPRESSURE_HPA (1013.25)
-//Adafruit_BME280 bme;
-
-// WiFi setup
-const char* ssid       = "JD_HOME";
-const char* password   = "6EYEBTA8!";
-
-const char* ntpServer = "pool.ntp.org";
-const long  gmtOffset_sec = 0;
-const int   daylightOffset_sec = 3600;
-
-// MP3 Player setup
-#include "SoftwareSerial.h"
-#include "DFRobotDFPlayerMini.h"
-
-SoftwareSerial DFSerial(16, 17); // RX, TX
-DFRobotDFPlayerMini MP3;
-void printDetail(uint8_t type, int value);
-
+// lists to store data about the touch pins
 bool touchPins[20];
 unsigned long long lastTouch[10];
-#ifndef settouchpins
+
+// initialize interrupt service routines for each touch pin
+// TODO: find a macro for this
+#ifndef nosettouchpins
 void gotTouch0(){
   touchPins[0] = true;
 }
@@ -87,6 +37,7 @@ void gotTouch7(){
 }
 #endif
 
+// general function to check if a touch pad has been pressed
 bool getTouch(int pin){
   if (touchPins[pin] && (millis() > (lastTouch[pin]+TOUCH_WAIT))){
     touchPins[pin] = false;
@@ -96,6 +47,7 @@ bool getTouch(int pin){
   return false;
 }
 
+// function to print the time to Serial
 void printLocalTime() {
   struct tm timeinfo;
   if(!getLocalTime(&timeinfo)){
@@ -105,21 +57,32 @@ void printLocalTime() {
   Serial.println(&timeinfo, "%A, %B %d %Y %H:%M:%S");
 }
 
-void tftPrint(String s, int16_t x, int16_t y, uint32_t bgcolor = ST77XX_BLACK, uint32_t txtcolor = ST77XX_WHITE, uint8_t border = 0) {
+// custom display print functions to print text onto the display with lower refresh time
+void tftPrint(String s, int16_t x, int16_t y, uint32_t bgcolor = ST77XX_BLACK, uint32_t txtcolor = ST77XX_WHITE, uint8_t border = 0, bool fullscreen = true) {
   int16_t  x1, y1;
   uint16_t w, h;
   tft.getTextBounds(s, x, y, &x1, &y1, &w, &h);
   if (border == 0) {
     tft.fillRect(x1, y1, w, h, bgcolor);
   } else {
-    tft.fillRect(x1-border, y1-border, tft.width(), h+(2*border), bgcolor);
+    if (fullscreen) {
+      tft.fillRect(x1-border, y1-border, tft.width(), h+(2*border), bgcolor);
+    } else {
+      tft.fillRect(x1-border, y1-border, w+(2*border), h+(2*border), bgcolor);
+    }
   }
   tft.setTextColor(txtcolor);
   tft.setCursor(x, y);
   tft.print(s);
 }
-
-void tftPrintln(String s, uint32_t color = ST77XX_BLACK) {
+void tftPrintln(String s, uint32_t color = ST77XX_BLACK) { // tft print newline
+  int16_t  x1, y1;
+  uint16_t w, h;
+  tft.getTextBounds(s, tft.getCursorX(), tft.getCursorY(), &x1, &y1, &w, &h);
+  tft.fillRect(x1, y1, w, h, color);
+  tft.println(s);
+}
+void tftPrintNP(String s, uint32_t color = ST77XX_BLACK) { // tft print no position.
   int16_t  x1, y1;
   uint16_t w, h;
   tft.getTextBounds(s, tft.getCursorX(), tft.getCursorY(), &x1, &y1, &w, &h);
@@ -127,14 +90,7 @@ void tftPrintln(String s, uint32_t color = ST77XX_BLACK) {
   tft.println(s);
 }
 
-void tftPrintNP(String s, uint32_t color = ST77XX_BLACK) {
-  int16_t  x1, y1;
-  uint16_t w, h;
-  tft.getTextBounds(s, tft.getCursorX(), tft.getCursorY(), &x1, &y1, &w, &h);
-  tft.fillRect(x1, y1, w, h, color);
-  tft.println(s);
-}
-
+// function to show time on screen
 void showTimeOnScreen() {
   tft.setCursor(0, BASE_FONT_HEIGHT);
   tft.setTextSize(1);
@@ -150,50 +106,141 @@ void showTimeOnScreen() {
   char longdate[32];
   char timedate[32];
   char shortime[16];
-  strftime(longdate, sizeof(longdate), "%A, %B %d", &timeinfo);
-  strftime(timedate, sizeof(timedate), "%H:%M:%S %d/%m/%Y", &timeinfo);
-  strftime(shortime, sizeof(shortime), "%H:%M", &timeinfo);
+  strftime(longdate, sizeof(longdate), "%A, %B %d                 ", &timeinfo);
+  strftime(timedate, sizeof(timedate), "%H:%M:%S %d/%m/%Y         ", &timeinfo);
+  strftime(shortime, sizeof(shortime), "%H:%M ", &timeinfo);
   
   tftPrintln(longdate);
   tftPrintln(timedate);
 
-  tft.setCursor(280, BASE_FONT_HEIGHT);
-  //tft.print(bme.readTemperature());
-  tft.print("20°C");
-
   tft.setFont(&FreeSans24pt7b);
   tft.setTextSize(2);
   tftPrint(shortime, 0, 200);
-
-  
 }
 
-#define NUM_ALARMS 2
-struct tm alarms[NUM_ALARMS];
-bool alarmenabled[NUM_ALARMS];
-uint8_t tmpHour = 0;
-uint8_t tmpMinute = 0;
+// #define NUM_ALARMS 2
+// struct tm alarms[NUM_ALARMS];
+// bool alarmenabled[NUM_ALARMS];
+// uint8_t tmpHour = 0;
+// uint8_t tmpMinute = 0;
 
 
 String fix2digits(uint8_t n) {
   String res = String(n);
-  if (res.length() <= 2) {
+  if (res.length() < 2) {
     res = "0" + res;
   }
   return res;
 }
 
-void printAlarmSetTime() {
-  tft.setCursor(0,BASE_FONT_HEIGHT);
-  tftPrintNP("Set alarm time: ");
-  tftPrintNP(fix2digits(tmpHour));
-  tftPrintNP(fix2digits(tmpMinute));
+// void printAlarmSetTime() {
+//   tft.setCursor(0,BASE_FONT_HEIGHT);
+//   tftPrintNP("Set alarm time: ");
+//   tftPrintNP(fix2digits(tmpHour));
+//   tftPrintNP(fix2digits(tmpMinute));
+// }
+
+struct alarmData {
+  bool enabled;
+  uint8_t min;
+  uint8_t hour; 
+  //bool wday[8];
+};
+uint8_t changeidx = 0;
+alarmData alarm1 = {false, 0, 0};
+
+void constrainAlarmTime(alarmData &alm) {
+  if (alm.hour > 24) {
+    alm.hour = 0;
+  }
+  if (alm.hour > 200) {
+    alm.hour = 0;
+  }
+  if (alm.min > 24) {
+    alm.min = 0;
+  }
+  if (alm.min > 200) {
+    alm.min = 0;
+  }
 }
 
 void setAlarm() {
-  while (!getTouch(SEL_P)) {
-    printAlarmSetTime();
+  //tft.fillScreen(ST77XX_BLACK);
+  //Serial.print("run set alarm");
+
+  // initialize text stuff
+  tft.setTextSize(1); 
+  tft.setFont(&FreeSans9pt7b);
+  
+  // print prompt message
+  tft.setCursor(0,BASE_FONT_HEIGHT);
+  tft.print("Set alarm time: ");
+  
+  tft.setFont(&FreeSans24pt7b);
+  tft.setTextSize(2);
+
+  if (changeidx == 0) {
+    tftPrint(fix2digits(alarm1.hour), 20, 100, ST77XX_WHITE, ST77XX_BLACK, SEL_BORDER_WIDTH, false);
+    if (getTouch(UP_P)) {
+      //Serial.println("Up pressed!");
+      alarm1.hour++;
+    }
+    if (getTouch(DOWN_P)) {
+      //Serial.println("Down pressed!");
+      alarm1.hour--;
+    }
+  } else {
+    tftPrint(fix2digits(alarm1.hour), 20, 100, ST77XX_BLACK, ST77XX_WHITE, SEL_BORDER_WIDTH);
   }
+  tftPrint(":", tft.getCursorX(), 100, ST77XX_BLACK, ST77XX_WHITE, SEL_BORDER_WIDTH);
+  if (changeidx == 1) {
+    tftPrint(fix2digits(alarm1.min), tft.getCursorX(), 100, ST77XX_WHITE, ST77XX_BLACK, SEL_BORDER_WIDTH, false);
+    if (getTouch(UP_P)) {
+      Serial.println("Up pressed!");
+      alarm1.min++;
+    }
+    if (getTouch(DOWN_P)) {
+      Serial.println("Down pressed!");
+      alarm1.min--;
+    }
+  } else {
+    tftPrint(fix2digits(alarm1.min), tft.getCursorX(), 100, ST77XX_BLACK, ST77XX_WHITE, SEL_BORDER_WIDTH);
+  }
+
+  tft.setTextSize(1); 
+  tft.setFont(&FreeSans9pt7b);
+
+  if (getTouch(SEL_P)) {
+    Serial.print("increasing change idx");
+    touchPins[SEL_P] = false;
+    changeidx++;
+  }
+  if (getTouch(BACK_P)) {
+    Serial.print("decreasing change idx");
+    changeidx--;
+  }
+  if (changeidx > 1) {
+    touchPins[BACK_P] = true;
+  }
+  if (changeidx < 0) {
+    changeidx = 0;
+  }
+  
+  constrainAlarmTime(alarm1);
+  //Serial.print(changeidx);
+  
+}
+
+void saveAlarm() {
+  tft.setTextSize(2); 
+  tft.setFont(&FreeSans9pt7b);
+  
+  // print prompt message
+  tft.setCursor(0,BASE_FONT_HEIGHT);
+  tft.print("Alarm saved!");
+  alarm1.enabled = true;
+  delay(1000);
+  tft.fillScreen(ST77XX_BLACK);
 }
 
 void listAlarm() {
@@ -213,22 +260,23 @@ typedef void (*func) (void);
 
 const char *selections[] = {"Set alarm", "Alarm list", "Selection 3", "Selection 4"};
 func mainFuncList[NUM_SELS] = {setAlarm, listAlarm};
-
+func exitFuncList[NUM_SELS] = {saveAlarm};
 
 #define MENU_FONT_HEIGHT 17
 uint8_t menuPos = -1;
 //uint8_t cursoridx = 0;
 uint8_t oldidx = 0;
+uint8_t progidx = -1;
+bool inProgram = false;
 void showMenu() {
   tft.setCursor(SEL_BORDER_WIDTH, SEL_BORDER_WIDTH+MENU_FONT_HEIGHT);
   tft.setTextSize(1);
   
   if (getTouch(UP_P)) {
-    Serial.println("Up pressed!");
     menuPos -= 1; 
   }
   if (getTouch(DOWN_P)) {
-    Serial.println("Down pressed!");
+    
     menuPos += 1;
   }
   if (menuPos > NUM_SELS -1) {
@@ -257,15 +305,23 @@ void showMenu() {
       }
     }
 
-    if (getTouch(SEL_P)) {
-      mainFuncList[menuPos]();
-    }
+    
   }
+  if (getTouch(SEL_P)) {
+      // Serial.print("Touched pad. ");
+      // Serial.println(menuPos);
 
+      tft.fillScreen(ST77XX_BLACK);
+      inProgram = true;
+      inMenu = false;
+      progidx = menuPos;
+      mainFuncList[menuPos]();
+  }
   oldidx = menuPos;
 }
 
 void setup() {
+  // setup pulse width modulation for LED strips and TFT backlight
   ledcSetup(WARM_CH, PWM_FREQ, PWM_RES);
   ledcSetup(COOL_CH, PWM_FREQ, PWM_RES);
   ledcSetup(TFT_BL_CH, PWM_FREQ, PWM_RES);
@@ -273,69 +329,56 @@ void setup() {
   ledcAttachPin(COOL_PIN, COOL_CH);
   ledcAttachPin(TFT_BL, TFT_BL_CH);
 
+  // setup capacitive touch pad interrupts
   touchAttachInterrupt(T2, gotTouch2, TOUCH_SENS);
   touchAttachInterrupt(T4, gotTouch4, TOUCH_SENS);
   touchAttachInterrupt(T5, gotTouch5, TOUCH_SENS);
   touchAttachInterrupt(T6, gotTouch6, TOUCH_SENS);
   touchAttachInterrupt(T7, gotTouch7, TOUCH_SENS);
 
+  // initialize Serial for debugging
   Serial.begin(115200);
+
+  // initialize TFT LCD to display
   tft.init(240, 320);
   tft.setTextSize(1);
   tft.setRotation(3);
   tft.setFont(&FreeSans9pt7b);
   tft.setTextColor(ST77XX_WHITE);
-  ledcWrite(TFT_BL_CH, map(analogRead(LIGHT_SENS), 0, 4095, 1, 256));
-  //connect to WiFi
-  Serial.printf("Connecting to %s ", ssid);
   tft.fillScreen(ST77XX_BLACK);
   tft.setCursor(0,BASE_FONT_HEIGHT);
+
+  // setup TFT backlight PWM
+  ledcWrite(TFT_BL_CH, map(analogRead(LIGHT_SENS), 0, 4095, 1, 256));
+
+  // connect to WiFi
+  Serial.printf("Connecting to %s ", ssid);
   tft.print("Connecting to WiFi");
   WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED) {
-      delay(500);
+  while (WiFi.status() != WL_CONNECTED) { // wait until WiFi connects
+      delay(1000);
       Serial.print(".");
       tft.print(".");
   }
   Serial.println(" CONNECTED");
   tft.print(" CONNECTED");
-  //init and get the time
+
+  // configure local time
   configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
   printLocalTime();
 
-  //disconnect WiFi as it's no longer needed
+  // disconnect WiFi as it's no longer needed
   WiFi.disconnect(true);
   WiFi.mode(WIFI_OFF);
-  
-  Serial.println("BME280 test");
-
-  // unsigned status;
-  
-  // // default settings
-  // status = bme.begin();  
-  // // You can also pass in a Wire library object like &Wire2
-  // // status = bme.begin(0x76, &Wire2)
-  // if (!status) {
-  //     Serial.println("Could not find a valid BME280 sensor, check wiring, address, sensor ID!");
-  //     Serial.print("SensorID was: 0x"); Serial.println(bme.sensorID(),16);
-  //     Serial.print("        ID of 0xFF probably means a bad address, a BMP 180 or BMP 085\n");
-  //     Serial.print("   ID of 0x56-0x58 represents a BMP 280,\n");
-  //     Serial.print("        ID of 0x60 represents a BME 280.\n");
-  //     Serial.print("        ID of 0x61 represents a BME 680.\n");
-  //     while (1) delay(10);
-  // }
 
   tft.fillScreen(ST77XX_BLACK);
-  
-  DFSerial.begin(9600);
 
-  Serial.println();
-  Serial.println(F("DFRobot DFPlayer Mini Demo"));
   Serial.println(F("Initializing DFPlayer ... (May take 3~5 seconds)"));
   
-  if (!MP3.begin(DFSerial)) {  //Use softwareSerial to communicate with mp3.
+  DFSerial.begin(9600);
+  if (!MP3.begin(DFSerial)) {  // Use SoftwareSerial to communicate with mp3.
     tft.setCursor(0,BASE_FONT_HEIGHT);
-    tft.print("DFPlayer not connected!");
+    tft.print("MP3 player error: not connected!");
     Serial.println(F("Unable to begin:"));
     Serial.println(F("1.Please recheck the connection!"));
     Serial.println(F("2.Please insert the SD card!"));
@@ -345,12 +388,15 @@ void setup() {
 
   MP3.volume(5);  //Set volume value. From 0 to 30
   MP3.play(2);  //Play the first mp3
+
+  getTouch(SEL_P);
+  tft.fillScreen(ST77XX_BLACK);
 }
 unsigned long long lastTime;
 
 int lightState = 256;
 void loop() {
-  if (!inMenu) {
+  if (!(inMenu || inProgram)) {
     if (millis() >= lastTime + 1000) {
       lastTime = millis();
       showTimeOnScreen();
@@ -363,7 +409,7 @@ void loop() {
       tft.fillScreen(ST77XX_BLACK);
       showMenu();
     }
-  } else {
+  } else if (inMenu){
     showMenu();
     if (getTouch(BACK_P)) {
       Serial.println("Back button pressed!");
@@ -371,18 +417,20 @@ void loop() {
       tft.setFont(&FreeSans9pt7b);
       tft.fillScreen(ST77XX_BLACK);
     }
+  } else {
+    mainFuncList[progidx]();
+    if (getTouch(BACK_P)) {
+      Serial.println("Back button pressed!");
+      inProgram = false;
+      exitFuncList[progidx]();
+      tft.setFont(&FreeSans9pt7b);
+      tft.fillScreen(ST77XX_BLACK);
+    }
   }
+
 
   ledcWrite(TFT_BL_CH, map(analogRead(34), 0, 4095, 1, 256));
   ledcWrite(WARM_CH, lightState);
-  if (getTouch(SEL_P)) {
-    if (lightState == 256) {
-      lightState = 0;
-    } else {
-      lightState = 256;
-    }
-    touchPins[SEL_P] = false;
-  }
   // for (int i = 0; i <= 255; i++) {
   //   ledcWrite(WARM_CH, i);
   //   delay(10);
