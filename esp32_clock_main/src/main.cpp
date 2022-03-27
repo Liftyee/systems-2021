@@ -57,6 +57,30 @@ void printLocalTime() {
   Serial.println(&timeinfo, "%A, %B %d %Y %H:%M:%S");
 }
 
+// function to sync time with WiFi
+void syncTime() {
+  //tft.fillScreen(ST77XX_BLACK);
+  // connect to WiFi
+  //Serial.printf("Connecting to %s ", ssid);
+  tft.print("Connecting to WiFi");
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) { // wait until WiFi connects
+      delay(1000);
+      //Serial.print(".");
+      tft.print(".");
+  }
+  //Serial.println(" CONNECTED");
+  tft.print(" CONNECTED");
+
+  // configure local time
+  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+  printLocalTime();
+
+  // disconnect WiFi as it's no longer needed
+  WiFi.disconnect(true);
+  WiFi.mode(WIFI_OFF);
+}
+
 // custom display print functions to print text onto the display with lower refresh time
 void tftPrint(String s, int16_t x, int16_t y, uint32_t bgcolor = ST77XX_BLACK, uint32_t txtcolor = ST77XX_WHITE, uint8_t border = 0, bool fullscreen = true) {
   int16_t  x1, y1;
@@ -101,7 +125,8 @@ void showTimeOnScreen() {
   
   struct tm timeinfo;
   if(!getLocalTime(&timeinfo)){
-    tft.print("Failed to obtain time");
+    tft.println("Failed to obtain time");
+    syncTime();
     return;
   } 
   char longdate[32];
@@ -140,6 +165,8 @@ String fix2digits(uint8_t n) {
 //   tftPrintNP(fix2digits(tmpHour));
 //   tftPrintNP(fix2digits(tmpMinute));
 // }
+
+bool inProgram = false;
 
 struct alarmData {
   bool enabled;
@@ -331,39 +358,69 @@ void toggleAlarm() {
   
 }
 
+bool played = false;
 void testAudio() {
   tft.setTextSize(1); 
   tft.setFont(&FreeSans12pt7b);
   tft.setCursor(0,20);
-  tft.print("Testing audio, press X to exit ");
-  MP3.play(2);
+  tft.println("Testing audio, press X to exit ");
+  if (!played){
+    tft.print("playing");
+    MP3.play(2);
+    played = true;
+  }
   if (getTouch(BACK_P)) {
     MP3.pause();
     touchPins[BACK_P] = true;
+    tft.print("Exiting...");
+    inProgram = false;
+    tft.fillScreen(ST77XX_BLACK);
   }
 }
 
+void testLight() {
+  tft.setTextSize(1); 
+  tft.setFont(&FreeSans12pt7b);
+  tft.setCursor(0,20);
+  tft.print("Testing light...");
+  for (int i = 0; i <= 255; i++) {
+    ledcWrite(WARM_CH, i);
+    delay(2);
+  }
+  for (int i = 0; i < 255; i++) {
+    ledcWrite(COOL_CH, i);
+    delay(2);
+  }
+  for (int i = 255; i >= 0; i--) {
+    ledcWrite(WARM_CH, i);
+    delay(2);
+  }
+  for (int i = 255; i > 0; i--) {
+    ledcWrite(COOL_CH, i);
+    delay(2);
+  }  
+}
 int16_t getlineY(uint8_t bwidth, uint16_t fheight, uint8_t line) {
   int16_t res;
   res = fheight*(line+1) + bwidth*line + (bwidth+1)*(line+1);
   return res;
 }
 
-#define NUM_SELS 5
+#define NUM_SELS 6
 bool inMenu = false;
 int curSelection = 0;
 typedef void (*func) (void);
 
-const char *selections[] = {"Set alarm", "Alarm list", "Set alarm volume", "Alarm on/off", "Speaker test"};
-func mainFuncList[NUM_SELS] = {setAlarm, listAlarm, setVolume, toggleAlarm, testAudio};
+const char *selections[] = {"Set alarm", "Alarm list", "Set alarm volume", "Alarm on/off", "Speaker test", "Light test"};
+func mainFuncList[NUM_SELS] = {setAlarm, listAlarm, setVolume, toggleAlarm, testAudio, testLight};
 //func exitFuncList[NUM_SELS] = {saveAlarm};
 
 #define MENU_FONT_HEIGHT 17
-uint8_t menuPos = -1;
+uint8_t menuPos = 0;
 //uint8_t cursoridx = 0;
-uint8_t oldidx = 0;
+uint8_t oldidx = -1;
 uint8_t progidx = -1;
-bool inProgram = false;
+
 void showMenu() {
   tft.setCursor(SEL_BORDER_WIDTH, SEL_BORDER_WIDTH+MENU_FONT_HEIGHT);
   tft.setTextSize(1);
@@ -447,25 +504,7 @@ void setup() {
   // setup TFT backlight PWM
   ledcWrite(TFT_BL_CH, map(analogRead(LIGHT_SENS), 0, 4095, 1, 256));
 
-  // connect to WiFi
-  Serial.printf("Connecting to %s ", ssid);
-  tft.print("Connecting to WiFi");
-  WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED) { // wait until WiFi connects
-      delay(1000);
-      Serial.print(".");
-      tft.print(".");
-  }
-  Serial.println(" CONNECTED");
-  tft.print(" CONNECTED");
-
-  // configure local time
-  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
-  printLocalTime();
-
-  // disconnect WiFi as it's no longer needed
-  WiFi.disconnect(true);
-  WiFi.mode(WIFI_OFF);
+  syncTime();
 
   tft.fillScreen(ST77XX_BLACK);
 
@@ -501,7 +540,8 @@ void loop() {
       //Serial.println("SEL button pressed!");
       tft.setFont(&FreeSans12pt7b);
       inMenu = true;
-      oldidx = -1;
+      oldidx = 1;
+
       tft.fillScreen(ST77XX_BLACK);
       showMenu();
     }
@@ -518,6 +558,7 @@ void loop() {
     if (getTouch(BACK_P)) {
       //Serial.println("Back button pressed!");
       inProgram = false;
+      played = false;
       //exitFuncList[progidx]();
       tft.setFont(&FreeSans9pt7b);
       tft.fillScreen(ST77XX_BLACK);
@@ -526,7 +567,8 @@ void loop() {
 
 
   ledcWrite(TFT_BL_CH, map(analogRead(34), 0, 4095, 1, 256));
-  ledcWrite(WARM_CH, lightState);
+  //ledcWrite(WARM_CH, lightState);
+  //ledcWrite(COOL_CH, lightState);
   // for (int i = 0; i <= 255; i++) {
   //   ledcWrite(WARM_CH, i);
   //   delay(10);

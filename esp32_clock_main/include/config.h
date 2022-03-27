@@ -19,8 +19,8 @@
 Adafruit_ST7789 tft = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST);
 
 #define LIGHT_SENS     34
-#define WARM_PIN       33
-#define COOL_PIN       32
+#define WARM_PIN       32
+#define COOL_PIN       33
 #define WARM_CH        0
 #define COOL_CH        1
 #define PWM_RES        8
@@ -34,10 +34,10 @@ Adafruit_ST7789 tft = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST);
 #define TOUCH_WAIT     500
 
 // WiFi setup
-const char* ssid       = "JD_HOME";
-const char* password   = "6EYEBTA8!";
+const char* ssid       = "cafe-PPSK";
+const char* password   = "cold.next.rule.ring";
 
-const char* ntpServer = "ntp.virginmedia.com";
+const char* ntpServer = "pool.ntp.org";
 const long  gmtOffset_sec = 0;
 const int   daylightOffset_sec = 0;
 
