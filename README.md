@@ -1,13 +1,13 @@
 # systems-2021
-systems project 2021
-multipurpose alarm clock with IoT integration
+Systems and Control project 2021
+Multipurpose alarm clock with IoT integrations
 
 features:
 - [ ] weather with IoT
-- [ ] CCT light  alarm
-- [ ] mp3 playback
-- [ ] graphical time display
-- [ ] graphical menu system
+- [ ] CCT light alarm
+- [x] mp3 playback
+- [x] graphical time display
+- [x] graphical menu system
 - [ ] environment sensing
-- [ ] automatic time update from NTP
+- [x] automatic time update from NTP
 - [ ] RTC 
