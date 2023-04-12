@@ -285,47 +285,6 @@ void listAlarm() {
   tftPrint(fix2digits(alarm1.hour) + ":" + fix2digits(alarm1.min), tft.getCursorX(), 20);
 }
 
-uint8_t volume = 0;
-void setVolume() {
-
-  // initialize text stuff
-  tft.setTextSize(1); 
-  tft.setFont(&FreeSans12pt7b);
-  
-  // print prompt message
-  tft.setCursor(0,20);
-  tft.print("Set volume: ");
-  
-  // set font for large letters
-  tft.setFont(&FreeSans24pt7b);
-  tft.setTextSize(2);
-
-  tftPrint(fix2digits(volume), 20, 100);
-
-  // reset font
-  tft.setTextSize(1); 
-  tft.setFont(&FreeSans9pt7b);
-  if (getTouch(UP_P)) {
-    volume++;
-  }
-  if (getTouch(DOWN_P)) {
-    volume--;
-  }
-  if (getTouch(SEL_P)) {
-    MP3.volume(volume*3);
-    touchPins[BACK_P] = true;
-  }
-
-  if (volume > 10) {
-    volume = 10;
-  }
-  if (volume < 0) {
-    volume = 0;
-  }
-  //Serial.print(changeidx);
-  
-}
-
 void toggleAlarm() {
 
   // initialize text stuff
@@ -358,26 +317,6 @@ void toggleAlarm() {
   
 }
 
-bool played = false;
-void testAudio() {
-  tft.setTextSize(1); 
-  tft.setFont(&FreeSans12pt7b);
-  tft.setCursor(0,20);
-  tft.println("Testing audio, press X to exit ");
-  if (!played){
-    tft.print("playing");
-    MP3.play(2);
-    played = true;
-  }
-  if (getTouch(BACK_P)) {
-    MP3.pause();
-    touchPins[BACK_P] = true;
-    tft.print("Exiting...");
-    inProgram = false;
-    tft.fillScreen(ST77XX_BLACK);
-  }
-}
-
 void testLight() {
   tft.setTextSize(1); 
   tft.setFont(&FreeSans12pt7b);
@@ -406,13 +345,13 @@ int16_t getlineY(uint8_t bwidth, uint16_t fheight, uint8_t line) {
   return res;
 }
 
-#define NUM_SELS 6
+#define NUM_SELS 4
 bool inMenu = false;
 int curSelection = 0;
 typedef void (*func) (void);
 
-const char *selections[] = {"Set alarm", "Alarm list", "Set alarm volume", "Alarm on/off", "Speaker test", "Light test"};
-func mainFuncList[NUM_SELS] = {setAlarm, listAlarm, setVolume, toggleAlarm, testAudio, testLight};
+const char *selections[] = {"Set alarm", "Alarm list", "Alarm on/off", "Light test"};
+func mainFuncList[NUM_SELS] = {setAlarm, listAlarm, toggleAlarm, testLight};
 //func exitFuncList[NUM_SELS] = {saveAlarm};
 
 #define MENU_FONT_HEIGHT 17
@@ -473,25 +412,22 @@ void showMenu() {
   oldidx = menuPos;
 }
 
-void setup() {
+void initPins() {
   // setup pulse width modulation for LED strips and TFT backlight
   ledcSetup(WARM_CH, PWM_FREQ, PWM_RES);
   ledcSetup(COOL_CH, PWM_FREQ, PWM_RES);
-  ledcSetup(TFT_BL_CH, PWM_FREQ, PWM_RES);
   ledcAttachPin(WARM_PIN, WARM_CH);
   ledcAttachPin(COOL_PIN, COOL_CH);
-  ledcAttachPin(TFT_BL, TFT_BL_CH);
-
+  
   // setup capacitive touch pad interrupts
   touchAttachInterrupt(T2, gotTouch2, TOUCH_SENS);
   touchAttachInterrupt(T4, gotTouch4, TOUCH_SENS);
   touchAttachInterrupt(T5, gotTouch5, TOUCH_SENS);
   touchAttachInterrupt(T6, gotTouch6, TOUCH_SENS);
   touchAttachInterrupt(T7, gotTouch7, TOUCH_SENS);
+}
 
-  // initialize Serial for debugging
-  Serial.begin(115200);
-
+void initTFT() {
   // initialize TFT LCD to display
   tft.init(240, 320);
   tft.setTextSize(1);
@@ -500,29 +436,25 @@ void setup() {
   tft.setTextColor(ST77XX_WHITE);
   tft.fillScreen(ST77XX_BLACK);
   tft.setCursor(0,BASE_FONT_HEIGHT);
+  tft.fillScreen(ST77XX_BLACK);
 
   // setup TFT backlight PWM
+  ledcSetup(TFT_BL_CH, PWM_FREQ, PWM_RES);
+  ledcAttachPin(TFT_BL, TFT_BL_CH);
   ledcWrite(TFT_BL_CH, map(analogRead(LIGHT_SENS), 0, 4095, 1, 256));
+}
+
+void setup() {
+
+
+  // initialize Serial for debugging
+  Serial.begin(115200);
+
+
 
   syncTime();
 
-  tft.fillScreen(ST77XX_BLACK);
-
-  Serial.println(F("Initializing DFPlayer ... (May take 3~5 seconds)"));
   
-  DFSerial.begin(9600);
-  if (!MP3.begin(DFSerial)) {  // Use SoftwareSerial to communicate with mp3.
-    tft.setCursor(0,BASE_FONT_HEIGHT);
-    tft.print("MP3 player error: not connected!");
-    Serial.println(F("Unable to begin:"));
-    Serial.println(F("1.Please recheck the connection!"));
-    Serial.println(F("2.Please insert the SD card!"));
-    while(!Serial);
-  }
-  Serial.println(F("DFPlayer Mini online."));
-
-  MP3.volume(5);  //Set volume value. From 0 to 30
-  //Play the first mp3
 
   getTouch(SEL_P);
   tft.fillScreen(ST77XX_BLACK);
@@ -558,7 +490,6 @@ void loop() {
     if (getTouch(BACK_P)) {
       //Serial.println("Back button pressed!");
       inProgram = false;
-      played = false;
       //exitFuncList[progidx]();
       tft.setFont(&FreeSans9pt7b);
       tft.fillScreen(ST77XX_BLACK);
@@ -587,65 +518,4 @@ void loop() {
   // }  
   memset(touchPins, 0, sizeof(touchPins));
   delay(100);
-
-  if (MP3.available()) {
-    printDetail(MP3.readType(), MP3.read()); //Print the detail message from DFPlayer to handle different errors and states.
-  }
-}
-
-
-
-void printDetail(uint8_t type, int value){
-  switch (type) {
-    case TimeOut:
-      Serial.println(F("Time Out!"));
-      break;
-    case WrongStack:
-      Serial.println(F("Stack Wrong!"));
-      break;
-    case DFPlayerCardInserted:
-      Serial.println(F("Card Inserted!"));
-      break;
-    case DFPlayerCardRemoved:
-      Serial.println(F("Card Removed!"));
-      break;
-    case DFPlayerCardOnline:
-      Serial.println(F("Card Online!"));
-      break;
-    case DFPlayerPlayFinished:
-      Serial.print(F("Number:"));
-      Serial.print(value);
-      Serial.println(F(" Play Finished!"));
-      break;
-    case DFPlayerError:
-      Serial.print(F("DFPlayerError:"));
-      switch (value) {
-        case Busy:
-          Serial.println(F("Card not found"));
-          break;
-        case Sleeping:
-          Serial.println(F("Sleeping"));
-          break;
-        case SerialWrongStack:
-          Serial.println(F("Get Wrong Stack"));
-          break;
-        case CheckSumNotMatch:
-          Serial.println(F("Check Sum Not Match"));
-          break;
-        case FileIndexOut:
-          Serial.println(F("File Index Out of Bound"));
-          break;
-        case FileMismatch:
-          Serial.println(F("Cannot Find File"));
-          break;
-        case Advertise:
-          Serial.println(F("In Advertise"));
-          break;
-        default:
-          break;
-      }
-      break;
-    default:
-      break;
-  }
 }

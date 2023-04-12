@@ -40,11 +40,3 @@ const char* password   = "cold.next.rule.ring";
 const char* ntpServer = "pool.ntp.org";
 const long  gmtOffset_sec = 0;
 const int   daylightOffset_sec = 0;
-
-// MP3 Player setup
-#include "SoftwareSerial.h"
-#include "DFRobotDFPlayerMini.h"
-
-SoftwareSerial DFSerial(16, 17); // RX, TX
-DFRobotDFPlayerMini MP3;
-void printDetail(uint8_t type, int value);
